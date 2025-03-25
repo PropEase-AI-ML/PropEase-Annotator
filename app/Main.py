@@ -5,7 +5,7 @@ from streamlit_pdf_viewer import pdf_viewer
 
 st.set_page_config(page_title="Document Annotator", layout="wide")
 
-st.title("📄 PropEase - Document Classification Annotator")
+st.title("📄 Document Classification Annotator")
 
 st.markdown("### Upload documents and annotate them with labels and comments.")
 
@@ -31,11 +31,11 @@ with st.expander("ℹ️ Click here to see available document classes"):
 st.markdown("### How to Annotate")
 st.info(
     "1️⃣ Upload your document(s).  "
-    "2️⃣ View the document preview on the left.  "
-    "3️⃣ Select the correct label from the dropdown on the right.  "
-    "4️⃣ Optionally, add any extra comments regarding the document.  "
-    "5️⃣ Click 'Submit Annotation' to save your label and comment.  "
-    "6️⃣ Download the annotated results as a CSV file."
+    "2️⃣ Select one document at a time from the list.  "
+    "3️⃣ View the preview and choose one or more labels.  "
+    "4️⃣ Optionally, add a custom label and comments.  "
+    "5️⃣ Save your annotation.  "
+    "6️⃣ Download all annotations as CSV."
 )
 
 # Upload documents
@@ -45,34 +45,53 @@ documents = st.file_uploader("📤 Upload your documents", accept_multiple_files
 if "labeled_data" not in st.session_state:
     st.session_state.labeled_data = []
 
-# Display documents for annotation
+# Track which documents have been annotated
+annotated_docs = {entry["document"] for entry in st.session_state.labeled_data}
+
+# Toggle: Show only unannotated
+show_unannotated_only = st.checkbox("🔍 Show only unannotated documents", value=True)
+
+# Render one document at a time using selectbox
 if documents:
-    for idx, doc in enumerate(documents):
+    doc_names = [doc.name for doc in documents if not show_unannotated_only or doc.name not in annotated_docs]
+
+    if doc_names:
+        selected_doc_name = st.selectbox("📂 Select a document to annotate", doc_names)
+        selected_doc = next(doc for doc in documents if doc.name == selected_doc_name)
+        idx = [doc.name for doc in documents].index(selected_doc_name)
+
         st.markdown("---")
-        st.subheader(f"📄 {doc.name}")
-        
+        st.subheader(f"📄 {selected_doc.name}")
+
         col1, col2 = st.columns([3, 2], gap="large")
-        
+
         with col1:
             st.markdown("#### 📑 Document Preview")
-            if doc.type == "text/plain":
+            if selected_doc.type == "text/plain":
                 try:
-                    content = doc.getvalue().decode("utf-8")
+                    content = selected_doc.getvalue().decode("utf-8")
                     st.text_area("Document Content", content, height=300, disabled=True, key=f"text_area_{idx}")
                 except UnicodeDecodeError:
                     st.error("❌ Cannot display this text file. Try another format.")
-            elif doc.type == "application/pdf":
-                pdf_data = doc.read()
-                pdf_viewer(input=pdf_data, width=500, height=600)
-        
+            elif selected_doc.type == "application/pdf":
+                pdf_data = selected_doc.read()
+                pdf_viewer(input=pdf_data, width=1000, height=1200, key=f"pdf_viewer_{idx}")
+
         with col2:
             st.markdown("#### 🏷️ Annotation")
-            label = st.selectbox("Select the appropriate category", list(class_labels.keys()), key=f"label_input_{idx}")
+            selected_labels = st.multiselect("Select one or more categories", list(class_labels.keys()), key=f"multi_label_input_{idx}")
+            custom_label = st.text_input("➕ Custom Label (optional)", key=f"custom_label_input_{idx}")
             comment = st.text_area("✍️ Additional Comments", "", height=120, key=f"comment_input_{idx}")
-            
+
             if st.button("✅ Save Annotation", key=f"submit_btn_{idx}"):
-                st.session_state.labeled_data.append({"document": doc.name, "label": label, "comment": comment})
-                st.success(f"✅ Annotation saved for {doc.name}!")
+                labels = selected_labels.copy()
+                if custom_label:
+                    labels.append(custom_label)
+                label_string = "; ".join(labels)
+                st.session_state.labeled_data.append({"document": selected_doc.name, "labels": label_string, "comment": comment})
+                st.success(f"✅ Annotation saved for {selected_doc.name}!")
+    else:
+        st.info("🎉 All documents have been annotated!")
 
 # Export labeled data to CSV
 if st.session_state.labeled_data:
